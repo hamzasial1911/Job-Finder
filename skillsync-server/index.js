@@ -292,6 +292,47 @@ async function run() {
       }
     });
 
+    // Add this new API Route for changing password
+    app.post("/change-password", async (req, res) => {
+      const { email, newPassword } = req.body;
+
+      try {
+        // Find the user by email
+        const user = await usersCollections.findOne({ email });
+
+        if (!user) {
+          return res.status(404).json({ 
+            status: false, 
+            message: "User not found" 
+          });
+        }
+
+        // Update the user's password
+        const result = await usersCollections.updateOne(
+          { email },
+          { $set: { password: newPassword } }
+        );
+
+        if (result.modifiedCount === 1) {
+          res.status(200).json({ 
+            status: true, 
+            message: "Password updated successfully" 
+          });
+        } else {
+          res.status(400).json({ 
+            status: false, 
+            message: "Password update failed" 
+          });
+        }
+      } catch (error) {
+        console.error("Error updating password:", error);
+        res.status(500).json({ 
+          status: false, 
+          message: "An error occurred while updating the password" 
+        });
+      }
+    });
+
     app.get("*", (req, res) => {
       res.sendFile(path.join(buildPath, "index.html")); 
     });
