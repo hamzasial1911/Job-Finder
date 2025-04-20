@@ -181,44 +181,89 @@ const JobDetails = () => {
   };
 
   const TestModal = () => (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <h2 className="text-2xl font-bold mb-4">Skills Assessment Test</h2>
-        
-        {testQuestions.map((question, index) => (
-          <div key={index} className="mb-6">
-            <p className="font-medium mb-2">{index + 1}. {question.question}</p>
-            <div className="space-y-2">
-              {question.options.map((option, optIndex) => (
-                <label key={optIndex} className="flex items-center space-x-2">
-                  <input
-                    type="radio"
-                    name={`question-${index}`}
-                    value={option}
-                    onChange={() => handleAnswerSelect(index, option)}
-                    checked={userAnswers[index] === option}
-                    className="form-radio"
-                  />
-                  <span>{option}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg p-8 max-w-3xl w-full max-h-[90vh] overflow-y-auto">
+        {/* Header Section */}
+        <div className="border-b pb-4 mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Skills Assessment Test</h2>
+          <p className="text-gray-600 mt-2">Please answer all questions to proceed with your application.</p>
+        </div>
 
-        <div className="flex justify-end space-x-4 mt-6">
+        {/* Questions Section */}
+        <div className="space-y-8">
+          {testQuestions.map((question, index) => (
+            <div key={index} className="bg-gray-50 rounded-lg p-6">
+              <div className="flex items-start mb-4">
+                <span className="bg-blue-600 text-white rounded-full w-8 h-8 flex items-center justify-center flex-shrink-0 mr-3">
+                  {index + 1}
+                </span>
+                <p className="font-medium text-gray-800 text-lg">{question.question}</p>
+              </div>
+              
+              <div className="ml-11 space-y-3">
+                {question.options.map((option, optIndex) => (
+                  <label 
+                    key={optIndex} 
+                    className={`flex items-center p-3 rounded-lg border transition-all cursor-pointer
+                      ${userAnswers[index] === option 
+                        ? 'border-blue-500 bg-blue-50' 
+                        : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`question-${index}`}
+                      value={option}
+                      onChange={() => handleAnswerSelect(index, option)}
+                      checked={userAnswers[index] === option}
+                      className="form-radio h-4 w-4 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="ml-3 text-gray-700">{option}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Progress Indicator */}
+        <div className="mt-6 mb-4">
+          <div className="flex justify-between text-sm text-gray-600 mb-2">
+            <span>Progress</span>
+            <span>{Object.keys(userAnswers).length} of {testQuestions.length} answered</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(Object.keys(userAnswers).length / testQuestions.length) * 100}%` }}
+            ></div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="border-t pt-6 mt-6 flex justify-between items-center">
           <button
             onClick={() => setShowTest(false)}
-            className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+            className="px-6 py-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
           >
-            Cancel
+            Cancel Test
           </button>
-          <button
-            onClick={submitTest}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Submit Test
-          </button>
+          <div className="flex items-center gap-4">
+            <span className="text-sm text-gray-500">
+              {Object.keys(userAnswers).length === testQuestions.length ? 
+                "All questions answered!" : 
+                "Please answer all questions"}
+            </span>
+            <button
+              onClick={submitTest}
+              disabled={Object.keys(userAnswers).length !== testQuestions.length}
+              className={`px-6 py-2.5 rounded-lg text-white font-medium transition-all
+                ${Object.keys(userAnswers).length === testQuestions.length
+                  ? 'bg-blue-600 hover:bg-blue-700'
+                  : 'bg-gray-400 cursor-not-allowed'}`}
+            >
+              Submit Test
+            </button>
+          </div>
         </div>
       </div>
     </div>
