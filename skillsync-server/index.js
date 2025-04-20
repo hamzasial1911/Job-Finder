@@ -4,6 +4,7 @@ const cors = require("cors");
 const multer = require("multer");
 const path = require("path");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const OpenAI = require('openai');
 require("dotenv").config();
 
 const port = process.env.PORT || 3000;
@@ -40,6 +41,11 @@ const upload = multer({ storage });
 // Ensure the uploads folder is publicly accessible
 app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // Serve uploaded files from the "uploads" directory
 
+// Add OpenAI configuration after your MongoDB configuration
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY // Make sure to add this to your .env file
+});
+
 // Main function to run the MongoDB operations and API setup
 async function run() {
   try {
@@ -49,6 +55,7 @@ async function run() {
     const jobsCollections = db.collection("jobs"); 
     const usersCollections = db.collection("users"); 
     const applicationsCollections = db.collection("applications"); 
+    const testResultsCollection = db.collection("testResults");
 
     // API Route for user login (authentication)
     app.post("/user-login", async (req, res) => {
@@ -330,6 +337,134 @@ async function run() {
           status: false, 
           message: "An error occurred while updating the password" 
         });
+      }
+    });
+
+    // Add this new endpoint inside your run() function
+    app.post("/generate-test", async (req, res) => {
+      const { jobTitle, jobDescription } = req.body;
+
+      try {
+        const prompt = `Create 10 multiple choice questions for a ${jobTitle} position.
+        The questions should test technical knowledge relevant to the role.
+        Job description: ${jobDescription}
+        
+        Format the response as a JSON array of objects, where each object has:
+        - question: the question text
+        - options: array of 4 possible answers
+        - correctAnswer: the correct answer (must be one of the options)
+        
+        Example format:
+        [
+          {
+            "question": "What is...",
+            "options": ["A", "B", "C", "D"],
+            "correctAnswer": "B"
+          }
+        ]`;
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content: "You are a technical interviewer creating job assessment questions."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000
+        });
+
+        // Parse the response and ensure it's valid JSON
+        let questions = JSON.parse(completion.choices[0].message.content);
+
+        // Remove correct answers before sending to frontend
+        const questionsForFrontend = questions.map(({ question, options }) => ({
+          question,
+          options
+        }));
+
+        // Store the complete questions (including correct answers) in the database
+        await testResultsCollection.insertOne({
+          jobTitle,
+          jobId: req.body.jobId,
+          questions,
+          createdAt: new Date()
+        });
+
+        res.json({ questions: questionsForFrontend });
+      } catch (error) {
+        console.error('Error generating test:', error);
+        res.status(500).json({ error: 'Failed to generate test questions' });
+      }
+    });
+
+    // Add the evaluate test endpoint
+    app.post("/evaluate-test", async (req, res) => {
+      const { jobId, userId, answers, questions } = req.body;
+
+      try {
+        // Fetch the original questions with correct answers from the database
+        const testData = await testResultsCollection.findOne({ jobId });
+        
+        if (!testData) {
+          return res.status(404).json({ error: 'Test not found' });
+        }
+
+        // Calculate the score
+        let correctCount = 0;
+        const originalQuestions = testData.questions;
+
+        Object.entries(answers).forEach(([questionIndex, userAnswer]) => {
+          if (originalQuestions[questionIndex].correctAnswer === userAnswer) {
+            correctCount++;
+          }
+        });
+
+        const score = (correctCount / originalQuestions.length) * 100;
+
+        // Store the test result
+        await testResultsCollection.updateOne(
+          { jobId },
+          {
+            $push: {
+              results: {
+                userId,
+                answers,
+                score,
+                submittedAt: new Date()
+              }
+            }
+          }
+        );
+
+        res.json({ score });
+      } catch (error) {
+        console.error('Error evaluating test:', error);
+        res.status(500).json({ error: 'Failed to evaluate test' });
+      }
+    });
+
+    // Add an endpoint to get test results for recruiters
+    app.get("/test-results/:jobId", async (req, res) => {
+      const { jobId } = req.params;
+
+      try {
+        const testResults = await testResultsCollection
+          .findOne({ jobId });
+
+        if (!testResults) {
+          return res.status(404).json({ error: 'No test results found for this job' });
+        }
+
+        res.json(testResults);
+      } catch (error) {
+        console.error('Error fetching test results:', error);
+        res.status(500).json({ error: 'Failed to fetch test results' });
       }
     });
 
