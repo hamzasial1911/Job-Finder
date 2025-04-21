@@ -340,35 +340,28 @@ async function run() {
       }
     });
 
-    // Add this new endpoint inside your run() function
+    // Modify the generate-test endpoint to store the complete test data
     app.post("/generate-test", async (req, res) => {
-      const { jobTitle, jobDescription } = req.body;
+      const { jobId, jobTitle, jobDescription } = req.body;
 
       try {
         const prompt = `Create 10 multiple choice questions for a ${jobTitle} position.
         The questions should test technical knowledge relevant to the role.
         Job description: ${jobDescription}
         
-        Format the response as a JSON array of objects, where each object has:
+        Return ONLY a JSON array of objects, where each object has:
         - question: the question text
         - options: array of 4 possible answers
         - correctAnswer: the correct answer (must be one of the options)
         
-        Example format:
-        [
-          {
-            "question": "What is...",
-            "options": ["A", "B", "C", "D"],
-            "correctAnswer": "B"
-          }
-        ]`;
+        The response should be valid JSON without any markdown formatting or additional text.`;
 
         const completion = await openai.chat.completions.create({
           model: "gpt-3.5-turbo",
           messages: [
             {
               role: "system",
-              content: "You are a technical interviewer creating job assessment questions."
+              content: "You are a technical interviewer creating job assessment questions. Respond only with valid JSON."
             },
             {
               role: "user",
@@ -379,8 +372,33 @@ async function run() {
           max_tokens: 2000
         });
 
-        // Parse the response and ensure it's valid JSON
-        let questions = JSON.parse(completion.choices[0].message.content);
+        let responseText = completion.choices[0].message.content;
+        
+        // Clean up the response text
+        responseText = responseText.trim();
+        if (responseText.startsWith('```json')) {
+          responseText = responseText.replace(/```json\n|```/g, '');
+        } else if (responseText.startsWith('```')) {
+          responseText = responseText.replace(/```\n|```/g, '');
+        }
+
+        // Parse and validate questions
+        let questions = JSON.parse(responseText);
+        
+        if (!Array.isArray(questions)) {
+          throw new Error('Response is not an array of questions');
+        }
+
+        // Store the complete test data in MongoDB
+        const testData = {
+          jobId: new ObjectId(jobId),
+          jobTitle,
+          questions: questions,
+          createdAt: new Date(),
+          results: []
+        };
+
+        await testResultsCollection.insertOne(testData);
 
         // Remove correct answers before sending to frontend
         const questionsForFrontend = questions.map(({ question, options }) => ({
@@ -388,64 +406,95 @@ async function run() {
           options
         }));
 
-        // Store the complete questions (including correct answers) in the database
-        await testResultsCollection.insertOne({
-          jobTitle,
-          jobId: req.body.jobId,
-          questions,
-          createdAt: new Date()
-        });
-
         res.json({ questions: questionsForFrontend });
       } catch (error) {
         console.error('Error generating test:', error);
-        res.status(500).json({ error: 'Failed to generate test questions' });
+        res.status(500).json({ error: 'Failed to generate test questions', details: error.message });
       }
     });
 
-    // Add the evaluate test endpoint
+    // Modify the evaluate-test endpoint
     app.post("/evaluate-test", async (req, res) => {
       const { jobId, userId, answers, questions } = req.body;
 
       try {
-        // Fetch the original questions with correct answers from the database
-        const testData = await testResultsCollection.findOne({ jobId });
+        // Prepare the evaluation prompt for OpenAI
+        const evaluationPrompt = `
+        You are a technical interviewer evaluating a candidate's test responses for a job position.
+        Please evaluate each answer and provide a score.
         
-        if (!testData) {
-          return res.status(404).json({ error: 'Test not found' });
-        }
+        Questions and Answers to evaluate:
+        ${questions.map((q, index) => `
+        Question ${index + 1}: ${q.question}
+        Available options: ${q.options.join(', ')}
+        Candidate's answer: ${answers[index]}
+        `).join('\n')}
+        
+        Please provide:
+        1. A score out of 100
+        2. Brief feedback for each answer
+        3. Overall assessment
+        
+        Return the response as a JSON object with this structure:
+        {
+          "score": number,
+          "feedback": array of feedback strings,
+          "overallAssessment": string
+        }`;
 
-        // Calculate the score
-        let correctCount = 0;
-        const originalQuestions = testData.questions;
-
-        Object.entries(answers).forEach(([questionIndex, userAnswer]) => {
-          if (originalQuestions[questionIndex].correctAnswer === userAnswer) {
-            correctCount++;
-          }
+        const completion = await openai.chat.completions.create({
+          model: "gpt-3.5-turbo",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert technical interviewer evaluating test responses. Provide detailed, fair evaluations."
+            },
+            {
+              role: "user",
+              content: evaluationPrompt
+            }
+          ],
+          temperature: 0.3,
+          max_tokens: 2000
         });
 
-        const score = (correctCount / originalQuestions.length) * 100;
+        let evaluationResult;
+        try {
+          evaluationResult = JSON.parse(completion.choices[0].message.content);
+        } catch (error) {
+          throw new Error('Failed to parse OpenAI evaluation response');
+        }
 
-        // Store the test result
+        // Store the complete test result (for recruiter's view)
         await testResultsCollection.updateOne(
-          { jobId },
+          { jobId: new ObjectId(jobId) },
           {
             $push: {
               results: {
                 userId,
                 answers,
-                score,
+                score: evaluationResult.score,
+                feedback: evaluationResult.feedback,
+                overallAssessment: evaluationResult.overallAssessment,
                 submittedAt: new Date()
               }
             }
-          }
+          },
+          { upsert: true }
         );
 
-        res.json({ score });
+        // Send minimal response to employee
+        res.json({
+          score: evaluationResult.score,
+          passed: evaluationResult.score >= 70
+        });
+
       } catch (error) {
         console.error('Error evaluating test:', error);
-        res.status(500).json({ error: 'Failed to evaluate test' });
+        res.status(500).json({ 
+          error: 'Failed to evaluate test',
+          message: error.message 
+        });
       }
     });
 

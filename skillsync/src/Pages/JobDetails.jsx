@@ -49,6 +49,7 @@ const JobDetails = () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          jobId: id,
           jobTitle: job.jobTitle,
           jobDescription: job.description,
         }),
@@ -92,22 +93,32 @@ const JobDetails = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to evaluate test');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to evaluate test');
       }
 
       const result = await response.json();
       setTestScore(result.score);
       
-      // If test passed, proceed with resume upload
-      if (result.score >= 70) {
-        Swal.fire('Success', `You passed the test with ${result.score}%! Please proceed with your application.`, 'success');
-        handleResumeUpload();
+      if (result.passed) {
+        Swal.fire({
+          title: 'Test Completed',
+          text: 'You have passed the assessment. Please proceed with uploading your resume.',
+          icon: 'success',
+          confirmButtonText: 'Upload Resume'
+        }).then(() => {
+          handleResumeUpload();
+        });
       } else {
-        Swal.fire('Sorry', `You scored ${result.score}%. Minimum required score is 70%.`, 'error');
+        Swal.fire({
+          title: 'Test Not Passed',
+          text: 'Unfortunately, you did not meet the minimum score requirement for this position.',
+          icon: 'error'
+        });
       }
     } catch (error) {
       console.error('Error submitting test:', error);
-      Swal.fire('Error', 'Failed to submit test', 'error');
+      Swal.fire('Error', error.message || 'Failed to submit test', 'error');
     }
   };
 
