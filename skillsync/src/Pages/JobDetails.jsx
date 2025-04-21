@@ -100,11 +100,38 @@ const JobDetails = () => {
       const result = await response.json();
       setTestScore(result.score);
       
+      // Helper function to format improvement areas
+      const formatImprovementAreas = (areas) => {
+        return areas.map(area => `
+          <div class="mb-4">
+            <p class="font-semibold text-gray-700">${area.area}</p>
+            <ul class="list-disc pl-5 text-gray-600">
+              ${area.suggestions.map(suggestion => `
+                <li>${suggestion}</li>
+              `).join('')}
+            </ul>
+          </div>
+        `).join('');
+      };
+
       if (result.passed) {
         Swal.fire({
-          title: 'Test Completed',
-          text: 'You have passed the assessment. Please proceed with uploading your resume.',
+          title: 'Congratulations! Test Passed',
+          html: `
+            <div class="text-left">
+              <p class="text-lg font-semibold mb-3">Score: ${result.score}%</p>
+              <p class="mb-4">${result.encouragingMessage}</p>
+              ${result.improvementAreas.length > 0 ? `
+                <div class="mt-4">
+                  <p class="font-semibold mb-2">Areas for Further Growth:</p>
+                  ${formatImprovementAreas(result.improvementAreas)}
+                </div>
+              ` : ''}
+              <p class="mt-4 text-blue-600">Please proceed to upload your resume.</p>
+            </div>
+          `,
           icon: 'success',
+          width: 600,
           confirmButtonText: 'Upload Resume'
         }).then(() => {
           handleResumeUpload();
@@ -112,8 +139,22 @@ const JobDetails = () => {
       } else {
         Swal.fire({
           title: 'Test Not Passed',
-          text: 'Unfortunately, you did not meet the minimum score requirement for this position.',
-          icon: 'error'
+          html: `
+            <div class="text-left">
+              <p class="text-lg font-semibold mb-3">Score: ${result.score}%</p>
+              <p class="mb-4">${result.encouragingMessage}</p>
+              <div class="mt-4">
+                <p class="font-semibold mb-2">Areas to Focus On:</p>
+                ${formatImprovementAreas(result.improvementAreas)}
+              </div>
+              <p class="mt-4 text-gray-600">
+                We encourage you to focus on these areas and try again in the future.
+                The minimum required score is 70%.
+              </p>
+            </div>
+          `,
+          icon: 'error',
+          width: 600
         });
       }
     } catch (error) {

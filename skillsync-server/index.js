@@ -11,11 +11,11 @@ const port = process.env.PORT || 3000;
 
 
 app.use(express.json());
-app.use(cors()); 
+app.use(cors());
 
 // Serve static files from React build
-const buildPath = path.join(__dirname, "../client/build"); 
-app.use(express.static(buildPath)); 
+const buildPath = path.join(__dirname, "../client/build");
+app.use(express.static(buildPath));
 
 // Database connection string and MongoDB client setup
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASSWORD}@skillsync.wa51l.mongodb.net/?retryWrites=true&w=majority&appName=SkillSync`;
@@ -30,13 +30,13 @@ const client = new MongoClient(uri, {
 // Multer configuration for handling file uploads (for job applications)
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, "uploads/"); 
+    cb(null, "uploads/");
   },
   filename: (req, file, cb) => {
-    cb(null, `${Date.now()}-${file.originalname}`); 
+    cb(null, `${Date.now()}-${file.originalname}`);
   },
 });
-const upload = multer({ storage }); 
+const upload = multer({ storage });
 
 // Ensure the uploads folder is publicly accessible
 app.use("/uploads", express.static(path.join(__dirname, "uploads"))); // Serve uploaded files from the "uploads" directory
@@ -49,29 +49,29 @@ const openai = new OpenAI({
 // Main function to run the MongoDB operations and API setup
 async function run() {
   try {
-    await client.connect(); 
+    await client.connect();
 
-    const db = client.db("skillsyncportal"); 
-    const jobsCollections = db.collection("jobs"); 
-    const usersCollections = db.collection("users"); 
-    const applicationsCollections = db.collection("applications"); 
+    const db = client.db("skillsyncportal");
+    const jobsCollections = db.collection("jobs");
+    const usersCollections = db.collection("users");
+    const applicationsCollections = db.collection("applications");
     const testResultsCollection = db.collection("testResults");
 
     // API Route for user login (authentication)
     app.post("/user-login", async (req, res) => {
-      const { email, password } = req.body; 
-      const user = await usersCollections.findOne({ email }); 
+      const { email, password } = req.body;
+      const user = await usersCollections.findOne({ email });
 
       if (!user) {
         return res
           .status(404)
-          .send({ message: "User not found", status: false }); 
+          .send({ message: "User not found", status: false });
       }
 
       if (user.password !== password) {
         return res
           .status(401)
-          .send({ message: "Invalid password", status: false }); 
+          .send({ message: "Invalid password", status: false });
       }
 
       res.status(200).send({
@@ -83,12 +83,12 @@ async function run() {
 
     // API Route for user signup (registration)
     app.post("/user-signup", async (req, res) => {
-      const body = req.body; 
-      body.createAt = new Date(); 
-      const result = await usersCollections.insertOne(body); 
+      const body = req.body;
+      body.createAt = new Date();
+      const result = await usersCollections.insertOne(body);
 
       if (result.insertedId) {
-        return res.status(200).send(result); 
+        return res.status(200).send(result);
       } else {
         return res.status(404).send({
           message: "Cannot Insert, Try Again later!",
@@ -100,11 +100,11 @@ async function run() {
     // API Route to post a new job (posting a job)
     app.post("/post-job", async (req, res) => {
       const body = req.body;
-      body.createAt = new Date(); 
-      const result = await jobsCollections.insertOne(body); 
+      body.createAt = new Date();
+      const result = await jobsCollections.insertOne(body);
 
       if (result.insertedId) {
-        return res.status(200).send(result); 
+        return res.status(200).send(result);
       } else {
         return res.status(404).send({
           message: "Cannot Insert, Try Again later!",
@@ -121,23 +121,23 @@ async function run() {
 
     // API Route to get a specific job by its ID
     app.get("/all-jobs/:id", async (req, res) => {
-      const id = req.params.id; 
-      const job = await jobsCollections.findOne({ _id: new ObjectId(id) }); 
-      res.send(job); 
+      const id = req.params.id;
+      const job = await jobsCollections.findOne({ _id: new ObjectId(id) });
+      res.send(job);
     });
 
     // API Route to get jobs posted by a specific email
     app.get("/MyJobs/:email", async (req, res) => {
       const jobs = await jobsCollections
         .find({ postedby: req.params.email })
-        .toArray(); 
-      res.status(200).send(jobs); 
+        .toArray();
+      res.status(200).send(jobs);
     });
 
     // **DELETE API Route for deleting a job**
     app.delete("/job/:id", async (req, res) => {
-      const id = req.params.id; 
-      const result = await jobsCollections.deleteOne({ _id: new ObjectId(id) }); 
+      const id = req.params.id;
+      const result = await jobsCollections.deleteOne({ _id: new ObjectId(id) });
 
       if (result.deletedCount === 0) {
         res.status(404).send({ message: "Job not found" });
@@ -149,26 +149,26 @@ async function run() {
     // API Route to update job information
     app.patch("/update-job/:id", async (req, res) => {
       const id = req.params.id;
-      const jobData = req.body; 
-      const filter = { _id: new ObjectId(id) }; 
-      const updateDoc = { $set: { ...jobData } }; 
-      const options = { upsert: true }; 
+      const jobData = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = { $set: { ...jobData } };
+      const options = { upsert: true };
       const result = await jobsCollections.updateOne(
         filter,
         updateDoc,
         options
       ); // Update the job
-      res.send(result); 
+      res.send(result);
     });
 
-    const { ObjectId } = require("mongodb"); 
+    const { ObjectId } = require("mongodb");
 
     // POST route to apply for a job
     app.post("/apply-job", upload.single("resume"), async (req, res) => {
       const { jobId, email } = req.body;
 
       if (!req.file) {
-        return res.status(400).send({ message: "No resume uploaded" }); 
+        return res.status(400).send({ message: "No resume uploaded" });
       }
 
       // Find the user by email to retrieve the userId
@@ -185,10 +185,10 @@ async function run() {
       // Create the application object
       const application = {
         jobId,
-        userId: userId, 
+        userId: userId,
         email,
-        resumePath: `/uploads/${req.file.filename}`, 
-        appliedAt: new Date(), 
+        resumePath: `/uploads/${req.file.filename}`,
+        appliedAt: new Date(),
       };
 
       try {
@@ -216,7 +216,7 @@ async function run() {
 
     // GET route to retrieve applicants for a specific job
     app.get("/applications/:jobId", async (req, res) => {
-      const { jobId } = req.params; 
+      const { jobId } = req.params;
 
       try {
         // Fetch applications for the given jobId
@@ -245,7 +245,7 @@ async function run() {
           })
         );
 
-        
+
         res.status(200).send(applicantDetails);
       } catch (error) {
         console.error("Error fetching applicants:", error);
@@ -257,7 +257,7 @@ async function run() {
 
     // API Route to fetch jobs applied for by a specific email
     app.get("/my-applications/:email", async (req, res) => {
-      const { email } = req.params; 
+      const { email } = req.params;
 
       try {
         // Fetch applications by the email
@@ -281,16 +281,16 @@ async function run() {
               ...application,
               jobDetails: job
                 ? {
-                    title: job.jobTitle,
-                    company: job.companyName,
-                    postedBy: job.postedby,
-                  }
+                  title: job.jobTitle,
+                  company: job.companyName,
+                  postedBy: job.postedby,
+                }
                 : null,
             };
           })
         );
 
-        res.status(200).send(jobs); 
+        res.status(200).send(jobs);
       } catch (error) {
         console.error("Error fetching applications:", error);
         res
@@ -308,9 +308,9 @@ async function run() {
         const user = await usersCollections.findOne({ email });
 
         if (!user) {
-          return res.status(404).json({ 
-            status: false, 
-            message: "User not found" 
+          return res.status(404).json({
+            status: false,
+            message: "User not found"
           });
         }
 
@@ -321,21 +321,21 @@ async function run() {
         );
 
         if (result.modifiedCount === 1) {
-          res.status(200).json({ 
-            status: true, 
-            message: "Password updated successfully" 
+          res.status(200).json({
+            status: true,
+            message: "Password updated successfully"
           });
         } else {
-          res.status(400).json({ 
-            status: false, 
-            message: "Password update failed" 
+          res.status(400).json({
+            status: false,
+            message: "Password update failed"
           });
         }
       } catch (error) {
         console.error("Error updating password:", error);
-        res.status(500).json({ 
-          status: false, 
-          message: "An error occurred while updating the password" 
+        res.status(500).json({
+          status: false,
+          message: "An error occurred while updating the password"
         });
       }
     });
@@ -373,7 +373,7 @@ async function run() {
         });
 
         let responseText = completion.choices[0].message.content;
-        
+
         // Clean up the response text
         responseText = responseText.trim();
         if (responseText.startsWith('```json')) {
@@ -384,7 +384,7 @@ async function run() {
 
         // Parse and validate questions
         let questions = JSON.parse(responseText);
-        
+
         if (!Array.isArray(questions)) {
           throw new Error('Response is not an array of questions');
         }
@@ -418,36 +418,43 @@ async function run() {
       const { jobId, userId, answers, questions } = req.body;
 
       try {
-        // Prepare the evaluation prompt for OpenAI
+        // Enhanced evaluation prompt for OpenAI
         const evaluationPrompt = `
-        You are a technical interviewer evaluating a candidate's test responses for a job position.
-        Please evaluate each answer and provide a score.
-        
-        Questions and Answers to evaluate:
-        ${questions.map((q, index) => `
-        Question ${index + 1}: ${q.question}
-        Available options: ${q.options.join(', ')}
-        Candidate's answer: ${answers[index]}
-        `).join('\n')}
-        
-        Please provide:
-        1. A score out of 100
-        2. Brief feedback for each answer
-        3. Overall assessment
-        
-        Return the response as a JSON object with this structure:
+    You are a technical interviewer evaluating a candidate's test responses for a job position.
+    Evaluate each answer and provide constructive feedback.
+    
+    Questions and Answers to evaluate:
+    ${questions.map((q, index) => `
+    Question ${index + 1}: ${q.question}
+    Available options: ${q.options.join(', ')}
+    Candidate's answer: ${answers[index]}
+    `).join('\n')}
+    
+    Please provide:
+    1. A score out of 100
+    2. Identify the top 2-3 areas where the candidate needs improvement
+    3. For each improvement area, provide specific, actionable learning suggestions
+    4. A brief encouraging message
+    
+    Return the response as a JSON object with this structure:
+    {
+      "score": number,
+      "improvementAreas": [
         {
-          "score": number,
-          "feedback": array of feedback strings,
-          "overallAssessment": string
-        }`;
+          "area": "string",
+          "suggestions": ["string"]
+        }
+      ],
+      "encouragingMessage": "string",
+      "detailedFeedback": ["string"] // for recruiter view only
+    }`;
 
         const completion = await openai.chat.completions.create({
           model: "gpt-3.5-turbo",
           messages: [
             {
               role: "system",
-              content: "You are an expert technical interviewer evaluating test responses. Provide detailed, fair evaluations."
+              content: "You are an expert technical interviewer who provides constructive, encouraging feedback while being honest about areas of improvement."
             },
             {
               role: "user",
@@ -465,7 +472,7 @@ async function run() {
           throw new Error('Failed to parse OpenAI evaluation response');
         }
 
-        // Store the complete test result (for recruiter's view)
+        // Store complete results (for recruiter's view)
         await testResultsCollection.updateOne(
           { jobId: new ObjectId(jobId) },
           {
@@ -474,8 +481,9 @@ async function run() {
                 userId,
                 answers,
                 score: evaluationResult.score,
-                feedback: evaluationResult.feedback,
-                overallAssessment: evaluationResult.overallAssessment,
+                improvementAreas: evaluationResult.improvementAreas,
+                detailedFeedback: evaluationResult.detailedFeedback,
+                encouragingMessage: evaluationResult.encouragingMessage,
                 submittedAt: new Date()
               }
             }
@@ -483,21 +491,22 @@ async function run() {
           { upsert: true }
         );
 
-        // Send minimal response to employee
+        // Send focused response to employee
         res.json({
           score: evaluationResult.score,
-          passed: evaluationResult.score >= 70
+          passed: evaluationResult.score >= 70,
+          improvementAreas: evaluationResult.improvementAreas,
+          encouragingMessage: evaluationResult.encouragingMessage
         });
 
       } catch (error) {
         console.error('Error evaluating test:', error);
-        res.status(500).json({ 
+        res.status(500).json({
           error: 'Failed to evaluate test',
-          message: error.message 
+          message: error.message
         });
       }
     });
-
     // Add an endpoint to get test results for recruiters
     app.get("/test-results/:jobId", async (req, res) => {
       const { jobId } = req.params;
@@ -518,12 +527,12 @@ async function run() {
     });
 
     app.get("*", (req, res) => {
-      res.sendFile(path.join(buildPath, "index.html")); 
+      res.sendFile(path.join(buildPath, "index.html"));
     });
 
     console.log("Connected to MongoDB!");
   } finally {
-    
+
   }
 }
 
